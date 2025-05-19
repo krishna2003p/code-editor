@@ -1,103 +1,190 @@
-import Image from "next/image";
+'use client';
+import { useState } from 'react';
+import { FaPlay, FaUndo, FaRedo, FaMoon, FaSun, FaBars, FaTimes } from 'react-icons/fa';
+import EditorTabs from '../components/EditorTabs';
+import OutputConsole from '../components/OutputConsole';
+import FileManager from '../components/FileManager';
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [files, setFiles] = useState([
+    { name: 'main.py', language: 'python', content: '', type: 'file', path: 'main.py' }
+  ]);
+  const [selected, setSelected] = useState(0);
+  const [output, setOutput] = useState('');
+  const [theme, setTheme] = useState('vs-dark');
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const [showSidebar, setShowSidebar] = useState(true);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const extensionToLanguage = {
+    py: 'python',
+    js: 'javascript',
+    ts: 'typescript',
+    cpp: 'cpp',
+    c: 'c',
+    java: 'java',
+    rb: 'ruby',
+    go: 'go',
+    php: 'php',
+    rs: 'rust',
+    cs: 'csharp',
+    sh: 'bash',
+  };
+
+  const handleRun = async () => {
+    const file = files[selected];
+    const extension = file.name.split('.').pop();
+    const language = extensionToLanguage[extension] || 'plaintext';
+    const code = file.content;
+  
+    try {
+      const res = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language, code }),
+      });
+    
+      const data = await res.json();
+    
+      if (res.ok) {
+        setOutput(data.output || data.stderr || 'No output');
+      } else {
+        setOutput(data.error || data.stderr || 'An error occurred during execution.');
+      }
+    } catch (error) {
+      setOutput(`Execution failed: ${error.message}`);
+    }
+  };
+
+  const handleThemeToggle = () => {
+    setTheme((prev) => (prev === 'vs-dark' ? 'light' : 'vs-dark'));
+  };
+
+  const clearOutput = () => {
+    setOutput('');
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length > 0) {
+      const prev = [...undoStack];
+      const lastState = prev.pop();
+      setUndoStack(prev);
+      setRedoStack([...redoStack, [...files]]);
+      setFiles(lastState);
+    }
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length > 0) {
+      const prev = [...redoStack];
+      const nextState = prev.pop();
+      setRedoStack(prev);
+      setUndoStack([...undoStack, [...files]]);
+      setFiles(nextState);
+    }
+  };
+
+  const updateFile = (index, updatedFile) => {
+    const newFiles = [...files];
+    setUndoStack([...undoStack, [...files]]);
+    newFiles[index] = updatedFile;
+    setFiles(newFiles);
+  };
+
+  const handleCloseTab = (index) => {
+    const updatedFiles = files.filter((_, i) => i !== index);
+    setFiles(updatedFiles);
+    if (index === selected) {
+      setSelected(Math.max(0, index - 1));
+    } else if (index < selected) {
+      setSelected(selected - 1);
+    }
+  };
+
+  return (
+    <div
+      className={`flex flex-col md:flex-row h-screen overflow-hidden relative ${
+        theme === 'vs-dark' ? 'bg-[#1e1e1e] text-white' : 'bg-white text-black'
+      }`}
+    >
+      {/* Sidebar */}
+      <div
+        className={`
+          ${theme === 'vs-dark' ? 'bg-[#1e1e1e]' : 'bg-gray-200'}
+          w-64 h-full p-2 border-r border-gray-700 overflow-auto z-30
+          fixed md:relative top-0 left-0
+          transition-transform duration-300 ease-in-out
+          ${showSidebar ? 'translate-x-0' : '-translate-x-full'}
+        `}
+        style={{ minWidth: '16rem' }} // ensures width consistency on toggle
+      >
+        <FileManager
+          files={files}
+          setFiles={setFiles}
+          selected={selected}
+          setSelected={setSelected}
+          theme={theme}
+          onClose={() => setShowSidebar(false)}
+        />
+      </div>
+
+      {/* Main Content */}
+      <div
+        className={`
+          flex-1 flex flex-col w-full
+          transition-all duration-300 ease-in-out
+          ${showSidebar ? 'md:ml-0' : 'md:ml-0'}
+          // Add min-width 0 to allow flex shrinking properly in some browsers
+        `}
+        style={{ minWidth: 0 }}
+      >
+        {/* Header */}
+        <div
+          className={`${theme === 'vs-dark' ? 'bg-[#2a2d2e]' : 'bg-gray-100'} px-4 py-2 border-b border-gray-700 flex justify-between items-center flex-wrap gap-2`}
+        >
+          {/* Left: Sidebar Toggle & Title */}
+          <div className="flex items-center gap-4">
+            <button
+              className="md:hidden text-xl"
+              onClick={() => setShowSidebar((prev) => !prev)}
+              title="Toggle Sidebar"
+            >
+              {showSidebar ? <FaTimes /> : <FaBars />}
+            </button>
+            <h1 className="font-semibold text-lg">My Code Editor</h1>
+          </div>
+
+          {/* Right: Control Buttons */}
+          <div className="flex items-center gap-4">
+            <button onClick={handleUndo} title="Undo" className="hover:text-yellow-400">
+              <FaUndo />
+            </button>
+            <button onClick={handleRedo} title="Redo" className="hover:text-yellow-400">
+              <FaRedo />
+            </button>
+            <button onClick={handleRun} title="Run" className="flex items-center gap-1 hover:text-green-400">
+              <FaPlay /> Run
+            </button>
+            <button onClick={handleThemeToggle} title="Toggle Theme" className="hover:text-blue-400">
+              {theme === 'vs-dark' ? <FaSun /> : <FaMoon />}
+            </button>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Editor Tabs */}
+        <EditorTabs
+          files={files}
+          setFiles={setFiles}
+          selected={selected}
+          setSelected={setSelected}
+          updateFile={updateFile}
+          theme={theme}
+          handleCloseTab={handleCloseTab}
+        />
+
+        {/* Output */}
+        <OutputConsole output={output} resetOutput={clearOutput} />
+      </div>
     </div>
   );
 }
